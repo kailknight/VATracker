@@ -9,30 +9,35 @@
     status: 'SLA Status',
     days: 'Days to SLA Breach',
     strategy: 'Remediation Strategy',
-    odc: 'ODC Primary'
+    odc: 'ODC Primary',
+    system: 'System ID',
+    systemName: 'P1: Name'
   };
   const UNASSIGNED = '(Unassigned)';
+  const NO_SYSTEM = '(No System ID)';
 
   // SLA buckets by days left until the SLA deadline (not yet breached).
+  // Colours come from CSS variables (--t-<key>) so they adapt to dark mode.
   const BUCKETS = [
-    { key: 'd15', label: '< 15 days', sub: '0–15 days left', max: 15, tone: '#ea580c' },
-    { key: 'd30', label: '< 30 days', sub: '16–30 days left', max: 30, tone: '#d97706' },
-    { key: 'd45', label: '< 45 days', sub: '31–45 days left', max: 45, tone: '#ca8a04' },
-    { key: 'd60', label: '< 60 days', sub: '46–60 days left', max: 60, tone: '#2563eb' },
-    { key: 'd61', label: '> 61 days', sub: '61+ days left', max: Infinity, tone: '#16a34a' }
+    { key: 'd15', label: '< 15 days', sub: '0–15 days left', max: 15 },
+    { key: 'd30', label: '< 30 days', sub: '16–30 days left', max: 30 },
+    { key: 'd45', label: '< 45 days', sub: '31–45 days left', max: 45 },
+    { key: 'd60', label: '< 60 days', sub: '46–60 days left', max: 60 },
+    { key: 'd61', label: '> 61 days', sub: '61+ days left', max: Infinity }
   ];
   const ALERTS = [
-    { key: 'breach', label: 'SLA Status = Breach', sub: 'deadline has passed', tone: '#b91c1c' },
-    { key: 'nostrategy', label: 'No Remediation Strategy', sub: 'Remediation Strategy is blank', tone: '#7c3aed' },
-    { key: 'all', label: 'Total findings', sub: 'all rows in scope', tone: '#374151' }
+    { key: 'breach', label: 'SLA Status = Breach', sub: 'deadline has passed' },
+    { key: 'nostrategy', label: 'No Remediation Strategy', sub: 'Remediation Strategy is blank' },
+    { key: 'all', label: 'Total findings', sub: 'all rows in scope' }
   ];
   const CATEGORY = Object.fromEntries([...BUCKETS, ...ALERTS].map(c => [c.key, c]));
+  const tone = (key) => `var(--t-${key})`;
 
   const $ = (id) => document.getElementById(id);
   let data = null;       // { columns, rows, updatedAt, updatedBy }
   let items = [];        // enriched rows
   let detailCols = [];   // columns shown in the details table
-  let detail = null;     // { category, odc } currently open
+  let detail = null;     // { category, odc } — odc undefined = follow the filter
   let sort = { col: '__days', desc: false };
 
   // ---------- helpers ----------
@@ -41,7 +46,7 @@
     for (const [k, v] of Object.entries(attrs)) {
       if (v === undefined || v === null || v === false) continue;
       if (k === 'text') node.textContent = v;
-      else if (k === 'style') Object.assign(node.style, v);
+      else if (k === 'style') for (const [p, val] of Object.entries(v)) node.style.setProperty(p.replace(/[A-Z]/g, m => '-' + m.toLowerCase()), val);
       else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
       else node.setAttribute(k, v);
     }
@@ -74,6 +79,8 @@
     return {
       row, days, breached, bucket,
       odc: get(COL.odc) || UNASSIGNED,
+      system: get(COL.system) || NO_SYSTEM,
+      systemName: get(COL.systemName),
       noStrategy: !get(COL.strategy),
       text: row.join('\u0001').toLowerCase()
     };
@@ -85,9 +92,27 @@
     if (key === 'nostrategy') return it.noStrategy;
     return it.bucket === key;
   }
+  const slaKey = (it) => it.breached ? 'breach' : it.bucket;
 
-  const selectedOdc = () => $('odcFilter').value;
-  const scoped = (odc = selectedOdc()) => odc ? items.filter(it => it.odc === odc) : items;
+  const filters = () => ({ odc: $('odcFilter').value, sys: $('sysFilter').value });
+  // Rows matching the filters; pass odc to override the ODC Primary filter (matrix clicks).
+  function scoped(odc = filters().odc) {
+    const { sys } = filters();
+    return items.filter(it => (!odc || it.odc === odc) && (!sys || it.system === sys));
+  }
+
+  // ---------- theme ----------
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    $('themeBtn').textContent = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+    $('themeBtn').setAttribute('aria-pressed', theme === 'dark');
+  }
+  $('themeBtn').onclick = () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('vat-theme', next); } catch { /* storage may be blocked */ }
+    applyTheme(next);
+  };
+  applyTheme(document.documentElement.dataset.theme || 'light');
 
   // ---------- loading ----------
   async function load() {
@@ -116,30 +141,59 @@
     const when = data.updatedAt ? new Date(data.updatedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
     $('updated').textContent = `${data.rows.length.toLocaleString()} findings · data updated ${when}${data.updatedBy ? ' by ' + data.updatedBy : ''}`;
 
-    buildFilter();
+    const hash = new URLSearchParams(location.hash.slice(1));
+    buildOdcFilter(hash.get('odc') ?? $('odcFilter').value);
+    buildSysFilter(hash.get('sys') ?? $('sysFilter').value);
     render();
   }
 
-  function buildFilter() {
-    const sel = $('odcFilter');
-    const wanted = decodeURIComponent((location.hash.match(/odc=([^&]*)/) || [])[1] || '') || sel.value;
+  const sortNames = (special) => (a, b) => (a === special) - (b === special) || a.localeCompare(b, undefined, { numeric: true });
+
+  function buildOdcFilter(wanted) {
     const counts = {};
     for (const it of items) counts[it.odc] = (counts[it.odc] || 0) + 1;
-    const names = Object.keys(counts).sort((a, b) => (a === UNASSIGNED) - (b === UNASSIGNED) || a.localeCompare(b));
-    sel.replaceChildren(
+    const names = Object.keys(counts).sort(sortNames(UNASSIGNED));
+    $('odcFilter').replaceChildren(
       el('option', { value: '', text: `All (${items.length})` }),
       ...names.map(n => el('option', { value: n, text: `${n} (${counts[n]})` }))
     );
-    sel.value = names.includes(wanted) ? wanted : '';
+    $('odcFilter').value = names.includes(wanted) ? wanted : '';
+  }
+
+  // System list follows the ODC Primary filter, so it only offers systems that person has.
+  function buildSysFilter(wanted) {
+    const { odc } = filters();
+    const counts = {}, names = {};
+    for (const it of items) {
+      if (odc && it.odc !== odc) continue;
+      counts[it.system] = (counts[it.system] || 0) + 1;
+      if (it.systemName) names[it.system] = it.systemName;
+    }
+    const ids = Object.keys(counts).sort(sortNames(NO_SYSTEM));
+    const total = ids.reduce((s, id) => s + counts[id], 0);
+    $('sysFilter').replaceChildren(
+      el('option', { value: '', text: `All (${total})` }),
+      ...ids.map(id => el('option', { value: id, text: `${id}${names[id] ? ' — ' + names[id] : ''} (${counts[id]})` }))
+    );
+    $('sysFilter').value = ids.includes(wanted) ? wanted : '';
+  }
+
+  function syncHash() {
+    const { odc, sys } = filters();
+    const p = new URLSearchParams();
+    if (odc) p.set('odc', odc);
+    if (sys) p.set('sys', sys);
+    const s = p.toString();
+    history.replaceState(null, '', s ? `#${s}` : location.pathname + location.search);
   }
 
   // ---------- rendering ----------
-  function card(cat, odc) {
-    const n = scoped(odc).filter(it => inCategory(it, cat.key)).length;
-    const active = detail && detail.category === cat.key && detail.odc === odc;
+  function card(cat) {
+    const n = scoped().filter(it => inCategory(it, cat.key)).length;
+    const active = detail && detail.category === cat.key && detail.odc === undefined;
     return el('button', {
-      type: 'button', class: `card${n ? '' : ' zero'}${active ? ' active' : ''}`, style: { '--tone': cat.tone },
-      title: 'Show details', onclick: () => openDetails(cat.key, odc)
+      type: 'button', class: `card${n ? '' : ' zero'}${active ? ' active' : ''}`, style: { '--tone': tone(cat.key) },
+      title: 'Show details', onclick: () => openDetails(cat.key)
     }, [
       el('div', { class: 'num', text: n.toLocaleString() }),
       el('div', { class: 'label', text: cat.label }),
@@ -148,32 +202,40 @@
   }
 
   function render() {
-    const odc = selectedOdc();
-    $('scope').textContent = odc ? `Showing ${scoped().length} findings for ${odc}` : '';
-    $('slaCards').replaceChildren(...BUCKETS.map(b => card(b, odc)));
-    $('alertCards').replaceChildren(...ALERTS.map(a => card(a, odc)));
+    const { odc, sys } = filters();
+    const parts = [odc, sys && $('sysFilter').selectedOptions[0]?.textContent.replace(/ \(\d+\)$/, '')].filter(Boolean);
+    $('scope').textContent = parts.length ? `Showing ${scoped().length} findings for ${parts.join(' · ')}` : '';
+    $('clearFilters').hidden = !parts.length;
+    $('slaCards').replaceChildren(...BUCKETS.map(card));
+    $('alertCards').replaceChildren(...ALERTS.map(card));
     renderMatrix();
     if (detail) renderDetails();
   }
 
+  // Per-ODC Primary breakdown. Follows the System ID filter; the selected ODC Primary row is highlighted.
   function renderMatrix() {
     const cats = [...BUCKETS, ALERTS[0], ALERTS[1], ALERTS[2]];
+    const { odc: selected, sys } = filters();
+    const pool = sys ? items.filter(it => it.system === sys) : items;
     const groups = {};
-    for (const it of items) (groups[it.odc] = groups[it.odc] || []).push(it);
+    for (const it of pool) (groups[it.odc] = groups[it.odc] || []).push(it);
     const names = Object.keys(groups).sort((a, b) => (a === UNASSIGNED) - (b === UNASSIGNED) || groups[b].length - groups[a].length);
 
     const cell = (list, cat, odc) => {
       const n = list.filter(it => inCategory(it, cat.key)).length;
-      const td = el('td', { class: `n${cat.key === 'breach' ? ' breach' : ''}` });
+      const td = el('td', { class: 'n', style: { '--tone': tone(cat.key) } });
       td.append(n ? el('button', { type: 'button', class: 'cell', text: n.toLocaleString(), title: 'Show details', onclick: () => openDetails(cat.key, odc) })
         : el('span', { class: 'zero', text: '0' }));
       return td;
     };
     $('matrix').replaceChildren(
-      el('thead', {}, el('tr', {}, [el('th', { text: 'ODC Primary' }), ...cats.map(c => el('th', { class: 'n', text: c.key === 'all' ? 'Total' : c.label }))])),
+      el('thead', {}, el('tr', {}, [
+        el('th', { text: 'ODC Primary' }),
+        ...cats.map(c => el('th', { class: 'n' }, el('span', { class: 'chip', style: { '--tone': tone(c.key) }, text: c.key === 'all' ? 'Total' : c.label })))
+      ])),
       el('tbody', {}, [
-        ...names.map(n => el('tr', {}, [el('td', { text: n }), ...cats.map(c => cell(groups[n], c, n))])),
-        el('tr', { class: 'total' }, [el('td', { text: 'All' }), ...cats.map(c => cell(items, c, ''))])
+        ...names.map(n => el('tr', { class: n === selected ? 'selected' : undefined }, [el('td', { text: n }), ...cats.map(c => cell(groups[n], c, n))])),
+        el('tr', { class: 'total' }, [el('td', { text: 'All' }), ...cats.map(c => cell(pool, c, ''))])
       ])
     );
   }
@@ -189,11 +251,12 @@
 
   function renderDetails() {
     const q = $('detailsSearch').value.trim().toLowerCase();
-    let list = scoped(detail.odc).filter(it => inCategory(it, detail.category));
+    const odc = detail.odc === undefined ? filters().odc : detail.odc;
+    let list = scoped(odc).filter(it => inCategory(it, detail.category));
     const total = list.length;
     if (q) list = list.filter(it => it.text.includes(q));
 
-    const val = (it, col) => col === '__days' ? (it.days ?? Infinity) : col === '__sla' ? (it.breached ? 1 : 0) : String(it.row[col] ?? '');
+    const val = (it, col) => col === '__days' || col === '__sla' ? (it.days ?? Infinity) : String(it.row[col] ?? '');
     list = [...list].sort((a, b) => {
       const x = val(a, sort.col), y = val(b, sort.col);
       const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
@@ -201,34 +264,53 @@
     });
 
     const cat = CATEGORY[detail.category];
-    $('detailsTitle').textContent = `${cat.key === 'all' ? 'All findings' : cat.label} — ${detail.odc || 'All ODC Primary'} · ` +
+    const sys = filters().sys;
+    $('detailsTitle').textContent = `${cat.key === 'all' ? 'All findings' : cat.label} — ${odc || 'All ODC Primary'}${sys ? ' · ' + sys : ''} · ` +
       (q ? `${list.length} of ${total}` : `${total}`) + ' rows';
+    $('detailsTitle').style.setProperty('--tone', tone(cat.key));
 
     const cols = [{ name: 'Days left (today)', key: '__days' }, { name: 'SLA (today)', key: '__sla' }, ...detailCols.map(c => ({ name: c.name, key: c.i }))];
     const head = el('tr', {}, cols.map(c => el('th', {
       text: c.name, class: sort.col === c.key ? `sorted${sort.desc ? ' desc' : ''}` : undefined,
       onclick: () => { sort = { col: c.key, desc: sort.col === c.key ? !sort.desc : false }; renderDetails(); }
     })));
-    const body = list.length ? list.map(it => el('tr', {}, cols.map(c => {
-      if (c.key === '__days') return el('td', { class: `days${it.breached ? ' neg' : ''}`, text: it.days === null ? '—' : String(it.days) });
-      if (c.key === '__sla') return el('td', {}, el('span', { class: `pill ${it.breached ? 'breach' : 'ok'}`, text: it.breached ? 'Breached' : 'Within SLA' }));
-      const v = String(it.row[c.key] ?? '');
-      return v.length > 60 || v.includes('\n') ? el('td', { class: 'wrap' }, el('div', { text: v })) : el('td', { text: v });
-    }))) : [el('tr', {}, el('td', { class: 'empty', colspan: cols.length, text: 'No rows.' }))];
+    const body = list.length ? list.map(it => {
+      const k = slaKey(it);
+      return el('tr', { style: { '--tone': k ? tone(k) : 'transparent' } }, cols.map(c => {
+        if (c.key === '__days') return el('td', { class: 'days', text: it.days === null ? '—' : String(it.days) });
+        if (c.key === '__sla') return el('td', {}, el('span', { class: 'pill', text: k === 'breach' ? 'Breached' : k ? CATEGORY[k].label : '—' }));
+        const v = String(it.row[c.key] ?? '');
+        return v.length > 60 || v.includes('\n') ? el('td', { class: 'wrap' }, el('div', { text: v })) : el('td', { text: v });
+      }));
+    }) : [el('tr', {}, el('td', { class: 'empty', colspan: cols.length, text: 'No rows.' }))];
 
     $('detailsTable').replaceChildren(el('thead', {}, head), el('tbody', {}, body));
   }
 
+  function renderLegend() {
+    $('legend').replaceChildren(...[...BUCKETS, ALERTS[0], ALERTS[1]].map(c =>
+      el('span', { class: 'chip', style: { '--tone': tone(c.key) }, text: c.key === 'breach' ? 'Breach' : c.key === 'nostrategy' ? 'No strategy' : c.label })));
+  }
+
   // ---------- events ----------
   $('odcFilter').onchange = () => {
-    const v = selectedOdc();
-    history.replaceState(null, '', v ? `#odc=${encodeURIComponent(v)}` : location.pathname);
-    if (detail) detail.odc = v;
+    buildSysFilter($('sysFilter').value);
+    if (detail) detail.odc = undefined;
+    syncHash();
+    render();
+  };
+  $('sysFilter').onchange = () => { syncHash(); render(); };
+  $('clearFilters').onclick = () => {
+    $('odcFilter').value = '';
+    buildSysFilter('');
+    if (detail) detail.odc = undefined;
+    syncHash();
     render();
   };
   $('detailsSearch').oninput = () => renderDetails();
   $('closeDetails').onclick = () => { detail = null; $('details').hidden = true; render(); };
   $('refreshBtn').onclick = load;
 
+  renderLegend();
   load();
 })();

@@ -4,23 +4,41 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VA Tracker</title>
-  <link rel="stylesheet" href="css/style.css?v=1">
+  <script>
+    // Set the theme before the page paints (saved choice, else the system setting).
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('vat-theme'); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
   <header class="topbar">
     <div class="inner">
       <div class="brand">VA Tracker</div>
       <span class="updated" id="updated"></span>
+      <button class="btn" id="themeBtn" type="button" aria-pressed="false">🌙 Dark</button>
       <button class="btn" id="refreshBtn" type="button">↻ Refresh</button>
     </div>
   </header>
 
   <main class="page">
     <section class="toolbar">
-      <label for="odcFilter">ODC Primary</label>
-      <select id="odcFilter"></select>
+      <div class="filter">
+        <label for="odcFilter">ODC Primary</label>
+        <select id="odcFilter"></select>
+      </div>
+      <div class="filter">
+        <label for="sysFilter">System ID</label>
+        <select id="sysFilter"></select>
+      </div>
+      <button class="btn" id="clearFilters" type="button" hidden>✕ Clear filters</button>
       <span class="muted" id="scope"></span>
     </section>
+    <div class="legend" id="legend"></div>
 
     <div class="error" id="error" hidden></div>
 
@@ -43,6 +61,6 @@
     </section>
   </main>
 
-  <script src="js/app.js?v=1"></script>
+  <script src="js/app.js?v=2"></script>
 </body>
 </html>

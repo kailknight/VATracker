@@ -10,8 +10,10 @@ It reads `https://pophealth-odc.github.io/onepophealth/data/va.json` live, so a 
 - **SLA Status = Breach:** findings whose SLA deadline has passed.
 - **No Remediation Strategy:** findings with a blank **Remediation Strategy**.
 - **By ODC Primary:** the same counts per person.
+- **Filters:** ODC Primary and System ID (the System ID list narrows to the selected ODC Primary). Both are kept in the URL (`#odc=…&sys=…`), so you can share a filtered link.
+- **Colour coding:** Breach is red, `< 15` orange, `< 30` amber, `< 45` cyan, `< 60` blue, `> 61` green and No strategy purple.
+- **Dark mode:** use the 🌙 / ☀️ button. The choice is remembered per browser and starts from the system setting.
 - **Click any number** to open the full rows. You can search them and click a column header to sort.
-- **ODC Primary filter:** applies to the cards and details. The filter is kept in the URL (`#odc=…`), so you can share a filtered link.
 
 Days left are **recalculated from the SLA Deadline against today's date**, so the numbers stay current between uploads. The exported "Days to SLA Breach" column is only used if a deadline can't be read.
 

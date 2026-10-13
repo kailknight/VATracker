@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VA Tracker</title>
+  <link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+  <header class="topbar">
+    <div class="inner">
+      <div class="brand">VA Tracker</div>
+      <span class="updated" id="updated"></span>
+      <button class="btn" id="refreshBtn" type="button">↻ Refresh</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="toolbar">
+      <label for="odcFilter">ODC Primary</label>
+      <select id="odcFilter"></select>
+      <span class="muted" id="scope"></span>
+    </section>
+
+    <div class="error" id="error" hidden></div>
+
+    <h2 class="section-title">SLA Status <span class="muted">— days left until SLA deadline</span></h2>
+    <section class="cards" id="slaCards"></section>
+
+    <h2 class="section-title">Attention</h2>
+    <section class="cards" id="alertCards"></section>
+
+    <h2 class="section-title">By ODC Primary</h2>
+    <div class="table-wrap"><table class="matrix" id="matrix"></table></div>
+
+    <section class="details" id="details" hidden>
+      <div class="details-head">
+        <h2 id="detailsTitle"></h2>
+        <input type="search" id="detailsSearch" placeholder="Search in these rows…">
+        <button class="btn" id="closeDetails" type="button">✕ Close</button>
+      </div>
+      <div class="table-wrap details-wrap"><table class="grid" id="detailsTable"></table></div>
+    </section>
+  </main>
+
+  <script src="js/app.js?v=1"></script>
+</body>
+</html>

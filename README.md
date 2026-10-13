@@ -14,6 +14,7 @@ It reads `https://pophealth-odc.github.io/onepophealth/data/va.json` live, so a 
 - **Colour coding:** Breach is red, `< 15` orange, `< 30` amber, `< 45` cyan, `< 60` blue, `> 61` green and No strategy purple.
 - **Dark mode:** use the 🌙 / ☀️ button. The choice is remembered per browser and starts from the system setting.
 - **Click any number** to open the full rows. You can search them and click a column header to sort.
+- **Deep links:** `#open=breach`, `#open=nostrategy`, `#open=d15` and `#open=d30` (also `d45`, `d60`, `d61`, `all`) open that list on arrival. OnePopHealth's VA tiles use these, and they combine with `odc=` and `sys=`.
 
 Days left are **recalculated from the SLA Deadline against today's date**, so the numbers stay current between uploads. The exported "Days to SLA Breach" column is only used if a deadline can't be read.
 

@@ -145,6 +145,9 @@
     buildOdcFilter(hash.get('odc') ?? $('odcFilter').value);
     buildSysFilter(hash.get('sys') ?? $('sysFilter').value);
     render();
+    // Deep link from OnePopHealth's VA tiles, e.g. #open=breach — open that list straight away.
+    const open = hash.get('open');
+    if (open && CATEGORY[open] && !detail) openDetails(open);
   }
 
   const sortNames = (special) => (a, b) => (a === special) - (b === special) || a.localeCompare(b, undefined, { numeric: true });

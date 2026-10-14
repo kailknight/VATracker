@@ -153,15 +153,34 @@
       start();
     } catch (err) { showLogin(`✖ Couldn't check the username (${err.message}).`); }
   };
-  $('logoutBtn').onclick = () => { saveSession(null); session = null; showLogin(); };
+  // Log out here and in OnePopHealth (single sign-on).
+  $('logoutBtn').onclick = () => { saveSession(null); session = null; location.href = `${OPH_SITE}index.html?logout=1`; };
+
+  // Single sign-on: OnePopHealth links carry "#sso=<token>" (base64url JSON { u: username, t: issued-at }).
+  const OPH_SITE = 'https://pophealth-odc.github.io/onepophealth/';
+  function takeSsoToken() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const raw = hash.get('sso');
+    if (!raw) return null;
+    hash.delete('sso');
+    const rest = hash.toString();
+    history.replaceState(null, '', rest ? `#${rest}` : location.pathname + location.search);
+    try {
+      const t = JSON.parse(atob(raw.replace(/-/g, '+').replace(/_/g, '/')));
+      return t && t.u && Date.now() - t.t < 12 * 3600e3 ? t.u : null;
+    } catch { return null; }
+  }
 
   // The domain to show: your own; Admins may pick another (domain switch or #domain= link).
   const currentDomain = () => (isAdmin() && $('domainFilter').value) || domainOf(session);
 
   async function start() {
+    const ssoUser = takeSsoToken();
+    if (ssoUser) saveSession({ username: ssoUser });
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem('vat_session')); } catch { /* blocked */ }
-    if (!saved) return showLogin();
+    // Not signed in: sign in once on OnePopHealth, which sends you back here signed in.
+    if (!saved) { location.replace(`${OPH_SITE}index.html?next=${encodeURIComponent(location.href)}`); return; }
     try {
       // Re-read the user each visit so role / domain changes in OnePopHealth apply straight away.
       const user = await findUser(saved.username);

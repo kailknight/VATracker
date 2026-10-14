@@ -2,7 +2,9 @@
 
 A static dashboard (GitHub Pages) for the VA findings that admins upload in **OnePopHealth → Admin Dashboard → VA**.
 
-It reads `https://pophealth-odc.github.io/onepophealth/data/va.json` live, so a new upload shows here after GitHub Pages updates (usually a few minutes). Click **Refresh** to reload.
+**Sign in** with your OnePopHealth username. Each user sees **their own domain's** VA data; Admins can switch domain, and View users can't open the tracker. Population Health reads `data/va.json`, and other domains read `data/va-<domain>.json` (e.g. `va-operations.json`), uploaded in OnePopHealth → Admin → VA with the domain switch.
+
+It reads the data live, so a new upload shows here after GitHub Pages updates (usually a few minutes). Click **Refresh** to reload.
 
 ## What it shows
 

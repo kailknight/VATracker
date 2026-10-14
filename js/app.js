@@ -1,7 +1,13 @@
 /* VA Tracker — reads the VA data published by OnePopHealth (Admin Dashboard → VA tab). */
 (() => {
-  // Where the data lives. GitHub Pages serves it with CORS enabled, so this site can read it directly.
-  const DATA_URL = 'https://pophealth-odc.github.io/onepophealth/data/va.json';
+  // Where the data lives (OnePopHealth). GitHub Pages serves it with CORS enabled, so this site can read it directly.
+  const OPH = 'https://pophealth-odc.github.io/onepophealth/data/';
+  const USERS_URL = `${OPH}users.json`;   // sign-in uses OnePopHealth usernames, roles and domains
+  const LAYOUT_URL = `${OPH}layout.json`; // list of domains (for Admins' domain switch)
+  const DEFAULT_DOMAIN = 'Population Health';
+  // One VA file per domain — same rule as OnePopHealth: va.json for Population Health, va-<domain>.json for others.
+  const dataUrl = (domain) => !domain || domain.toLowerCase() === DEFAULT_DOMAIN.toLowerCase() ? `${OPH}va.json`
+    : `${OPH}va-${domain.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.json`;
 
   // Column names in va.json (the Excel header row).
   const COL = {
@@ -114,18 +120,97 @@
   };
   applyTheme(document.documentElement.dataset.theme || 'light');
 
+  // ---------- sign in (OnePopHealth users) ----------
+  // Admin / Approver / User can open the tracker (View is read-only in OnePopHealth and can't).
+  // Everyone sees their own domain's VA data; Admins can switch domain.
+  let session = null;
+  const isAdmin = () => String(session?.role).toLowerCase() === 'admin';
+  const domainOf = (u) => (u && u.domain) || DEFAULT_DOMAIN;
+  const fetchJson = async (url) => {
+    const res = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  };
+  async function findUser(username) {
+    return (await fetchJson(USERS_URL)).find(u => u.username.toLowerCase() === String(username).trim().toLowerCase());
+  }
+  const saveSession = (s) => { try { s ? localStorage.setItem('vat_session', JSON.stringify(s)) : localStorage.removeItem('vat_session'); } catch { /* blocked */ } };
+
+  function showLogin(message = '') {
+    $('main').hidden = true;
+    $('login').hidden = false;
+    $('userChip').hidden = $('logoutBtn').hidden = true;
+    $('loginError').textContent = message;
+    $('loginUser').focus();
+  }
+  $('login').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!$('loginUser').value.trim()) return;
+    try {
+      const user = await findUser($('loginUser').value);
+      if (!user) return showLogin('✖ Unknown username — ask a OnePopHealth admin to add you.');
+      saveSession({ username: user.username });
+      start();
+    } catch (err) { showLogin(`✖ Couldn't check the username (${err.message}).`); }
+  };
+  $('logoutBtn').onclick = () => { saveSession(null); session = null; showLogin(); };
+
+  // The domain to show: your own; Admins may pick another (domain switch or #domain= link).
+  const currentDomain = () => (isAdmin() && $('domainFilter').value) || domainOf(session);
+
+  async function start() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('vat_session')); } catch { /* blocked */ }
+    if (!saved) return showLogin();
+    try {
+      // Re-read the user each visit so role / domain changes in OnePopHealth apply straight away.
+      const user = await findUser(saved.username);
+      if (!user) { saveSession(null); return showLogin('✖ That username no longer exists.'); }
+      session = user;
+    } catch (err) { return showLogin(`✖ Couldn't load the user list (${err.message}).`); }
+    if (String(session.role).toLowerCase() === 'view') {
+      saveSession(null);
+      return showLogin(`Your role (View) can't open the VA Tracker.`);
+    }
+    $('login').hidden = true;
+    $('loginError').textContent = '';
+    $('main').hidden = false;
+    $('userChip').hidden = $('logoutBtn').hidden = false;
+    $('userChip').textContent = `👤 ${session.username} · ${session.role} · ${domainOf(session)}`;
+
+    if (isAdmin()) {
+      const domains = await fetchJson(LAYOUT_URL).then(l => l.settings?.domains || [DEFAULT_DOMAIN]).catch(() => [DEFAULT_DOMAIN]);
+      const wanted = new URLSearchParams(location.hash.slice(1)).get('domain') || domainOf(session);
+      $('domainFilter').replaceChildren(...domains.map(d => el('option', { value: d, text: d })));
+      $('domainFilter').value = domains.includes(wanted) ? wanted : domains[0];
+      $('domainBox').hidden = false;
+    }
+    load();
+  }
+
   // ---------- loading ----------
   async function load() {
+    const domain = currentDomain();
+    $('brandDomain').textContent = `· ${domain}`;
+    document.title = `VA Tracker — ${domain}`;
     $('error').hidden = true;
     $('updated').textContent = 'Loading…';
     try {
-      const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
+      const res = await fetch(`${dataUrl(domain)}?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.status === 404) throw new Error(`no VA data has been uploaded for ${domain} yet (OnePopHealth → Admin Dashboard → VA)`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
     } catch (err) {
+      data = null;
+      items = [];
       $('updated').textContent = '';
-      $('error').textContent = `Couldn't load the VA data from ${DATA_URL} (${err.message}).`;
+      $('error').textContent = `Couldn't load the ${domain} VA data: ${err.message}.`;
       $('error').hidden = false;
+      detail = null;
+      $('details').hidden = true;
+      buildOdcFilter('');
+      buildSysFilter('');
+      render();
       return;
     }
     // Older files stored rows as objects; convert to arrays.
@@ -184,6 +269,7 @@
   function syncHash() {
     const { odc, sys } = filters();
     const p = new URLSearchParams();
+    if (isAdmin()) p.set('domain', currentDomain());
     if (odc) p.set('odc', odc);
     if (sys) p.set('sys', sys);
     const s = p.toString();
@@ -312,8 +398,17 @@
   };
   $('detailsSearch').oninput = () => renderDetails();
   $('closeDetails').onclick = () => { detail = null; $('details').hidden = true; render(); };
-  $('refreshBtn').onclick = load;
+  $('refreshBtn').onclick = () => { if (session) load(); };
+  // Admins: switch domain → that domain's VA data, filters reset.
+  $('domainFilter').onchange = () => {
+    detail = null;
+    $('details').hidden = true;
+    $('odcFilter').value = '';
+    $('sysFilter').value = '';
+    syncHash();
+    load();
+  };
 
   renderLegend();
-  load();
+  start();
 })();

@@ -57,6 +57,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* .login etc. set display, which would otherwise override the hidden attribute */
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); transition: background .15s, color .15s; }
 .muted { color: var(--muted); font-weight: 400; }
 
@@ -155,3 +156,15 @@ th {
   .filter, .filter select { width: 100%; min-width: 0; max-width: none; }
   .details-head input { width: 100%; }
 }
+
+/* ---------- sign in ---------- */
+.login {
+  max-width: 380px; margin: 60px auto; background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 12px;
+}
+.login h2 { margin: 0; }
+.login p { margin: 0 0 4px; }
+.login input { font: 15px var(--font); padding: 9px 11px; border: 1px solid var(--input-border); border-radius: 8px; background: var(--input); color: var(--text); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; justify-content: center; padding: 10px; }
+.login-error { color: var(--t-breach); font-size: 14px; min-height: 1em; }
+#brandDomain { font-weight: 500; opacity: .75; }

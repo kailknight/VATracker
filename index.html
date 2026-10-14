@@ -13,20 +13,35 @@
       document.documentElement.dataset.theme = t;
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=2">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
   <header class="topbar">
     <div class="inner">
-      <div class="brand">VA Tracker</div>
+      <div class="brand">VA Tracker <span id="brandDomain"></span></div>
       <span class="updated" id="updated"></span>
+      <span class="updated" id="userChip" hidden></span>
       <button class="btn" id="themeBtn" type="button" aria-pressed="false">🌙 Dark</button>
       <button class="btn" id="refreshBtn" type="button">↻ Refresh</button>
+      <button class="btn" id="logoutBtn" type="button" hidden>Log out</button>
     </div>
   </header>
 
-  <main class="page">
+  <!-- Sign in with a OnePopHealth username; each user sees their own domain's VA data. -->
+  <form class="login" id="login" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">Use your OnePopHealth username.</p>
+    <input id="loginUser" placeholder="Username" autocomplete="username">
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" type="submit">Continue</button>
+  </form>
+
+  <main class="page" id="main" hidden>
     <section class="toolbar">
+      <div class="filter" id="domainBox" hidden>
+        <label for="domainFilter">Domain</label>
+        <select id="domainFilter"></select>
+      </div>
       <div class="filter">
         <label for="odcFilter">ODC Primary</label>
         <select id="odcFilter"></select>
@@ -61,6 +76,6 @@
     </section>
   </main>
 
-  <script src="js/app.js?v=3"></script>
+  <script src="js/app.js?v=5"></script>
 </body>
 </html>
